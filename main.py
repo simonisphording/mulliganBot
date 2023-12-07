@@ -13,7 +13,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 utc = datetime.timezone.utc
-dailyTime = datetime.time(hour=9, minute=18, tzinfo=utc)
+dailyTime = datetime.time(hour=12, minute=0, tzinfo=utc)
 
 
 @tasks.loop(time=dailyTime)
