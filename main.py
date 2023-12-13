@@ -3,9 +3,7 @@ import discord
 from discord.ext import tasks
 from utils.decklistFetcher import fetchLatestDecklist
 from utils.randomHand import generateHandImage
-
-token = "YOUR_TOKEN_HERE"
-channel_id = "YOUR_CHANNEL_ID_HERE"
+from utils.conf import token, channel_id
 
 intents = discord.Intents.default()
 intents.message_content = True
