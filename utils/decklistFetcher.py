@@ -28,3 +28,15 @@ def fetchLatestDecklist(decklist_id=None):
         deck += [name] * int(n)
 
     return deck, "https://www.mtggoldfish.com/deck/" + decklist_id
+
+
+def fetchCube(cube_id=None):
+    data = urllib.request.urlopen("https://cubecobra.com/cube/download/plaintext/" + cube_id).read().decode("utf-8")
+    deck = []
+    for card in data.split('\r\n'):
+        if card == '':
+            break
+        if card.startswith('#'):
+            continue
+        deck.append(card)
+    return deck, "https://cubecobra.com/cube/overview/" + cube_id
