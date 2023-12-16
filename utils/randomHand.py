@@ -1,4 +1,5 @@
 import os
+import datetime
 from random import sample
 from requests import get
 from json import loads
@@ -21,11 +22,33 @@ def saveImage(query):
         copyfileobj(get(img_url, stream=True).raw, out_file)
 
 
+def set_file_last_modified(file_path, dt):
+    dt_epoch = dt.timestamp()
+    os.utime(file_path, (dt_epoch, dt_epoch))
+
+
+def removeOld(path="images/cards", maxCards=1000):
+    files = [x for x in os.listdir(path) if not x.startswith('.')]
+    full_path = [path + "/{0}".format(x) for x in files]
+    while len(files) > maxCards:
+        oldest_file = min(full_path, key=os.path.getctime)
+        os.remove(oldest_file)
+        files = [x for x in os.listdir(path) if not x.startswith('.')]
+        full_path = [path + "/{0}".format(x) for x in files]
+
+
 def generateHandImage(deck):
     hand = drawSeven(deck)
+
+    # check if directory exceeds max number of cards
+    removeOld()
+
     for card in hand:
         if card + ".png" not in os.listdir("images/cards"):
             saveImage(card)
+        else:
+            now = datetime.datetime.now()
+            set_file_last_modified("images/cards/" + card + ".png", now)
 
     images = [Image.open("images/cards/" + x + ".png") for x in hand]
     widths, heights = zip(*(i.size for i in images))
