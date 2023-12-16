@@ -33,10 +33,13 @@ async def on_message(message):
             cube_id = message.content.split(" ")[1]
         else:
             await message.channel.send("please provide a cube ID")
-        cube, url = fetchCube(cube_id)
-        pack = generatePackImage(cube)
-        await message.channel.send(f'a random opening hand from <{url}>')
-        await message.channel.send(file=discord.File("images/pack.jpg"))
+        try:
+            cube, url = fetchCube(cube_id)
+            pack = generatePackImage(cube)
+            await message.channel.send(f'a random opening hand from <{url}>')
+            await message.channel.send(file=discord.File("images/pack.jpg"))
+        except HTTPError:
+            await message.channel.send("https://cubecobra.com/cube/overview/" + cube_id + " is not an existing cube")
 
 
 client.run(token)
