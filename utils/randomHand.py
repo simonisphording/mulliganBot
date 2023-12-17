@@ -27,7 +27,7 @@ def set_file_last_modified(file_path, dt):
     os.utime(file_path, (dt_epoch, dt_epoch))
 
 
-def removeOld(path="images/cards", maxCards=100):
+def removeOld(path="images/cards", maxCards=2000):
     files = [x for x in os.listdir(path) if not x.startswith('.')]
     full_path = [path + "/{0}".format(x) for x in files]
     while len(files) > maxCards:

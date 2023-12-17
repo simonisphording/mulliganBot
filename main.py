@@ -2,7 +2,7 @@ import discord
 from discord.ext import tasks
 from utils.decklistFetcher import fetchLatestDecklist, fetchCube
 from utils.randomHand import generateHandImage, generatePackImage
-from utils.conf import token, channel_id
+from utils.conf import token
 from urllib.error import HTTPError
 
 intents = discord.Intents.default()
