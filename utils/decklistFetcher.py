@@ -19,8 +19,8 @@ def fetchLatestDecklist(decklist_id=None):
         decklist_id = fetchDecklistID()
     if "mtggoldfish.com" in decklist_id:
         decklist_id = fetchDecklistID(decklist_id)
-    else:
-        data = urllib.request.urlopen("https://www.mtggoldfish.com/deck/download/" + decklist_id).read().decode("utf-8")
+
+    data = urllib.request.urlopen("https://www.mtggoldfish.com/deck/download/" + decklist_id).read().decode("utf-8")
 
     deck = []
     for card in data.split('\r\n'):
