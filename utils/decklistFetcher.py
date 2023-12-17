@@ -1,9 +1,9 @@
 import urllib
 
 
-def fetchDecklistID():
+def fetchDecklistID(url="https://www.mtggoldfish.com/archetype/pauper-familiars#paper"):
     # read mtggoldfish web page
-    data = urllib.request.urlopen("https://www.mtggoldfish.com/archetype/pauper-familiars#paper").read()
+    data = urllib.request.urlopen(url).read()
     data = data.decode("utf-8")
 
     # find the download link for the decklist
@@ -17,7 +17,10 @@ def fetchDecklistID():
 def fetchLatestDecklist(decklist_id=None):
     if decklist_id is None:
         decklist_id = fetchDecklistID()
-    data = urllib.request.urlopen("https://www.mtggoldfish.com/deck/download/" + decklist_id).read().decode("utf-8")
+    if "mtggoldfish.com" in decklist_id:
+        decklist_id = fetchDecklistID(decklist_id)
+    else:
+        data = urllib.request.urlopen("https://www.mtggoldfish.com/deck/download/" + decklist_id).read().decode("utf-8")
 
     deck = []
     for card in data.split('\r\n'):
