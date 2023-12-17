@@ -9,9 +9,11 @@ Install the required packages:
 
 Make sure to set the bot token and channel id in main.py
 
+Bot invite code: "https://discord.com/api/oauth2/authorize?client_id=1182089607274307685&permissions=277025426432&scope=bot"
+
 ## Usage
 
 This bot automatically posts 3 random sample hands at 12:00 UTC. Another sample hand can be requested using `/randomhand`. If you want to generate a sample hand from a different hand, you can include the deck ID like this: `/randomhand 6015401`.
 
 ## To Do's
-add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
+add an option to use shorthand names: for instance, "/starthand familiars" should give a deck from the familiars page
