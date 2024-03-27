@@ -79,7 +79,7 @@ async def dailyHands():
             deck, url = fetchLatestDecklist()
         hand = generateHandImage(deck)
 
-        thread_title = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d")
+        thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
         thread = await channel.create_thread(name=thread_title)
 
         await channel.send(f"Today's daily hand thread: {thread.mention}")
