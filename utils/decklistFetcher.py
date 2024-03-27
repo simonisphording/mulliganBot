@@ -1,5 +1,6 @@
 import urllib
-from utils.conf import default_decklist
+from utils.conf import default_decklist, daily_format
+import string
 
 
 def fetchDecklistID(url=default_decklist):
@@ -44,3 +45,22 @@ def fetchCube(cube_id=None):
             continue
         deck.append(card)
     return deck, "https://cubecobra.com/cube/overview/" + cube_id
+
+
+def fetchTopDecks(format=None):
+    if format is None:
+        format = daily_format
+    data = urllib.request.urlopen("https://www.mtggoldfish.com/metagame/" + format).read()
+    data = data.decode("utf-8")
+    decks = dict()
+    for line in data.split("\n"):
+        if "href=\'/archetype" in line:
+            link = line.split("\'")[3]
+            name = link.split("/")[2]
+            name = " ".join([x for x in name.split("-") if not (is_hexadecimal(x) or x == "pauper")])
+            decks[name] = "https://www.mtggoldfish.com" + link
+    return decks
+
+
+def is_hexadecimal(s):
+    return all(c in string.hexdigits for c in s)

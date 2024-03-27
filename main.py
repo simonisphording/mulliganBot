@@ -1,14 +1,23 @@
 import discord
-from discord.ext import tasks
-from utils.decklistFetcher import fetchLatestDecklist, fetchCube
+import datetime
+from discord.ext import tasks, commands
+from utils.decklistFetcher import fetchLatestDecklist, fetchCube, fetchTopDecks
 from utils.randomHand import generateHandImage, generatePackImage
-from utils.conf import token
+from utils.conf import token, channel_id
 from urllib.error import HTTPError
+from random import sample
+import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.reactions = True
 
 client = discord.Client(intents=intents)
+
+next_link = None
+
+utc = datetime.timezone.utc
+dailyTime = datetime.time(hour=12, minute=0, tzinfo=utc)
 
 @client.event
 async def on_message(message):
@@ -41,5 +50,100 @@ async def on_message(message):
         except HTTPError:
             await message.channel.send("https://cubecobra.com/cube/overview/" + cube_id + " is not an existing cube")
 
+    if message.content.startswith('/createpoll'):
+        if len(message.content.split(" ")) == 2:
+            mtg_format = message.content.split(" ")[1]
+        else:
+            mtg_format = None
+        try:
+            topDecks = fetchTopDecks(mtg_format)
+            rselection = sample(list(topDecks.keys()), 3)
+
+            rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
+
+            embed = discord.Embed(title="Which archetype would you like to see tomorrow?", color=discord.Color.blue())
+            for emoji, option in zip(rselection.keys(), rselection.values()):
+                embed.add_field(name=f"{emoji}: {option}", value="\u200B", inline=False)
+
+            msg = await message.channel.send(embed=embed)
+
+            for emoji in rselection.keys():
+                await msg.add_reaction(emoji)
+
+            #await asyncio.sleep(3600 * 24)  # wait 1 hour
+            await asyncio.sleep(5) # wait 10 seconds
+
+            # retrieve results
+            msg = await message.channel.fetch_message(msg.id)
+            max_count = 0
+            max_option = []
+            for reaction in msg.reactions:
+                emoji = reaction.emoji
+                if emoji in rselection.keys():
+                    count = reaction.count - 1
+                    if count > max_count:
+                        max_count = count
+                        max_option = [emoji]
+                    elif count == max_count:
+                        max_option.append(emoji)
+            winner = rselection[sample(max_option, 1)[0]]
+            link = topDecks[winner]
+
+            await message.channel.send(f"Poll closed! Tomorrow's deck will be {winner}")
+
+        except HTTPError:
+            await message.channel.send("https://www.mtggoldfish.com/metagame/" + mtg_format + " is not an existing format")
+
+#@tasks.loop(time=dailyTime)
+@tasks.loop(seconds=60)
+async def dailyHands():
+    global next_link
+    channel = client.get_channel(channel_id)
+    deck, url = fetchLatestDecklist(next_link)
+    hand = generateHandImage(deck)
+    await channel.send(f'a random opening hand from <{url}>')
+    await channel.send(file=discord.File("images/hand.jpg"))
+
+    topDecks = fetchTopDecks()
+    rselection = sample(list(topDecks.keys()), 3)
+
+    rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
+
+    embed = discord.Embed(title="Which archetype would you like to see tomorrow? Poll closes in 3 hours",
+                          color=discord.Color.blue())
+    for emoji, option in zip(rselection.keys(), rselection.values()):
+        embed.add_field(name=f"{emoji}: {option}", value="\u200B", inline=False)
+
+    msg = await channel.send(embed=embed)
+
+    for emoji in rselection.keys():
+        await msg.add_reaction(emoji)
+
+    await asyncio.sleep(3600 * 3)  # wait 3 hours
+
+    # retrieve results
+    msg = await channel.fetch_message(msg.id)
+    max_count = 0
+    max_option = []
+    for reaction in msg.reactions:
+        emoji = reaction.emoji
+        if emoji in rselection.keys():
+            count = reaction.count - 1
+            if count > max_count:
+                max_count = count
+                max_option = [emoji]
+            elif count == max_count:
+                max_option.append(emoji)
+    winner = rselection[sample(max_option, 1)[0]]
+    next_link = topDecks[winner]
+
+    await channel.send(f"Poll closed! Tomorrow's deck will be {winner}")
+
+
+@client.event
+async def on_ready():
+    if not dailyHands.is_running():
+        dailyHands.start()
+        print("dailyHands task started")
 
 client.run(token)
