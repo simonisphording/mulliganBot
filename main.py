@@ -5,7 +5,7 @@ from discord.ext import tasks, commands
 from utils.decklistFetcher import fetchLatestDecklist, fetchCube, fetchTopDecks
 from utils.randomHand import generateHandImage, generatePackImage
 from utils.channelStorer import store_channel_id, get_channel_id
-from utils.conf import token
+from utils.conf import token, poll_wait_time
 from urllib.error import HTTPError
 from random import sample
 import asyncio
@@ -64,8 +64,7 @@ async def on_message(message):
             await message.channel.send("https://cubecobra.com/cube/overview/" + cube_id + " is not an existing cube")
 
 
-#@tasks.loop(time=dailyTime)
-@tasks.loop(seconds=60)
+@tasks.loop(time=dailyTime)
 async def dailyHands():
     global next_link
     for guild in client.guilds:
@@ -102,8 +101,7 @@ async def dailyHands():
         for emoji in rselection.keys():
             await msg.add_reaction(emoji)
 
-        #await asyncio.sleep(3600 * 3)  # wait 3 hours
-        await asyncio.sleep(30)
+        await asyncio.sleep(poll_wait_time)
 
         # retrieve results
         msg = await thread.fetch_message(msg.id)
