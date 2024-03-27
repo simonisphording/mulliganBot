@@ -1,7 +1,8 @@
 import urllib
+from utils.conf import default_decklist
 
 
-def fetchDecklistID(url="https://www.mtggoldfish.com/archetype/pauper-familiars#paper"):
+def fetchDecklistID(url=default_decklist):
     # read mtggoldfish web page
     data = urllib.request.urlopen(url).read()
     data = data.decode("utf-8")
