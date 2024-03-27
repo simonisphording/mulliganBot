@@ -102,7 +102,8 @@ async def dailyHands():
         for emoji in rselection.keys():
             await msg.add_reaction(emoji)
 
-        await asyncio.sleep(3600 * 3)  # wait 3 hours
+        #await asyncio.sleep(3600 * 3)  # wait 3 hours
+        await asyncio.sleep(30)
 
         # retrieve results
         msg = await thread.fetch_message(msg.id)
