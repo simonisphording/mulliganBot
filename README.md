@@ -1,4 +1,4 @@
-This is a simple bot that posts 3 random opening hands from the latest deck featured on the mtggoldfish.com familiars page.
+This is a simple bot that posts an opening hand for a deck of choice once per day in a newly created discord thread, followed by a poll to choose a deck for the next day.
 
 ## Setup
 
@@ -7,13 +7,31 @@ Install the required packages:
 - discord.py
 - requests
 
-Make sure to set the bot token and channel id in main.py
+Create a file named conf.py in the utils directory for some basic configurations:
 
-Bot invite code: "https://discord.com/api/oauth2/authorize?client_id=1182089607274307685&permissions=277025426432&scope=bot"
+```
+token = "YOUR_TOKEN_HERE" # The discord bot token
+poll_wait_time = 3600 * 3 # Time before poll closes
+
+default_decklist = "DEFAULT DECKLIST HERE" # a link to the archetype when /randomhand is called without a link to a decklist
+daily_format = "pauper" # the metagame page on mtggoldfish to use
+```
+
+Your bot is ready to be deployed now. Make sure to use /setchannel to set a channel for a daily mulligan thread.
 
 ## Usage
 
-This bot automatically posts 3 random sample hands at 12:00 UTC. Another sample hand can be requested using `/randomhand`. If you want to generate a sample hand from a different hand, you can include the deck ID like this: `/randomhand 6015401`.
+The bot automatically creates a thread once per day where a random starting hand is posted. This is followed up with a poll letting users vote between 3 randomly chosen archetypes of your format of choice.
+
+The bot has the following commands:
+
+- /setchannel - lets moderators set the channel in which daily threads are created
+- /randomhand DECK_LINK - creates a random opening hand for the provided mtggoldfish deck list
+- /randompack CUBE_ID - creates a random 15 card pack given a cubecobra cube ID
 
 ## To Do's
-add an option to use shorthand names: for instance, "/starthand familiars" should give a deck from the familiars page
+
+- add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
+- remove the default decklist from /randomhand, give an error message instead
+- create a new command, /mulligan, that automatically selects the deck posted last by the bot
+- create command tooltips
