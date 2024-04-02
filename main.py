@@ -1,14 +1,29 @@
 import os
 import discord
 import datetime
+import argparse
 from discord.ext import tasks
-from utils.decklistFetcher import fetchLatestDecklist, fetchCube, fetchTopDecks
-from utils.randomHand import generateHandImage, generatePackImage
+from utils.decklistFetcher import fetchLatestDecklist, fetchTopDecks
+from utils.randomHand import generateHandImage
 from utils.channelStorer import store_channel_id, get_channel_id, store_last_poll, get_last_poll
-from utils.conf import token, poll_wait_time, make_poll
 from urllib.error import HTTPError
 from random import sample
 import asyncio
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-t', '--token', type=str,
+                    help='the bot token')
+parser.add_argument('--poll-wait-time', type=int, default=3600 * 5,
+                    help='time in seconds before the poll closes')
+parser.add_argument('--make-poll', action='store_true',
+                    help='enable voting for decklists using a poll')
+parser.add_argument('--daily-format', type=str, default='pauper',
+                    help='the mtg format to sample decks from for the poll')
+parser.add_argument('--default-decklist', type=str,
+                    default="https://www.mtggoldfish.com/archetype/pauper-familiars#paper",
+                    help='the default decklist for /randomhand if no input is given')
+
+args = parser.parse_args()
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -57,7 +72,7 @@ async def set_channel(message):
 
 
 async def random_hand(message):
-    deck_id = message.content.split(" ")[1] if len(message.content.split(" ")) == 2 else None
+    deck_id = message.content.split(" ")[1] if len(message.content.split(" ")) == 2 else args.default_decklist
     try:
         deck, url = fetchLatestDecklist(deck_id)
         await message.channel.send(f'a random opening hand from <{url}>')
@@ -85,7 +100,7 @@ async def mulligan(message):
             await send_hand_image(message.channel, deck)
 
 
-@tasks.loop(seconds=60)#time=dailyTime)
+@tasks.loop(time=dailyTime)
 async def dailyHands():
     for guild in client.guilds:
         channel = client.get_channel(get_channel_id(guild.id))
@@ -93,18 +108,18 @@ async def dailyHands():
             print(f"{guild.name} has no channel id")
             break
 
-        if make_poll and get_last_poll(guild.id):
+        if args.make_poll and get_last_poll(guild.id):
             deck, url = fetchLatestDecklist(get_last_poll(guild.id))
         else:
-            deck, url = fetchLatestDecklist()
+            deck, url = fetchLatestDecklist(args.default_decklist)
         thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
 
         message = await channel.send(f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
         thread = await channel.create_thread(name=thread_title, message=message)
         await send_hand_image(thread, deck)
 
-        if make_poll:
-            topDecks = fetchTopDecks()
+        if args.make_poll:
+            topDecks = fetchTopDecks(args.daily_format)
             rselection = sample(list(topDecks.keys()), 3)
 
             rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
@@ -119,7 +134,7 @@ async def dailyHands():
             for emoji in rselection.keys():
                 await msg.add_reaction(emoji)
 
-            await asyncio.sleep(poll_wait_time)
+            await asyncio.sleep(args.poll_wait_time)
 
             # retrieve results
             msg = await thread.fetch_message(msg.id)
@@ -146,4 +161,4 @@ async def on_ready():
         dailyHands.start()
         print("dailyHands task started")
 
-client.run(token)
+client.run(args.token)

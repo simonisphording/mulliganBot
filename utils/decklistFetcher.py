@@ -1,9 +1,8 @@
 import urllib
-from utils.conf import default_decklist, daily_format
 import string
 
 
-def fetchDecklistID(url=default_decklist):
+def fetchDecklistID(url):
     # read mtggoldfish web page
     data = urllib.request.urlopen(url).read()
     data = data.decode("utf-8")
@@ -16,9 +15,7 @@ def fetchDecklistID(url=default_decklist):
     return page
 
 
-def fetchLatestDecklist(decklist_id=None):
-    if decklist_id is None:
-        decklist_id = fetchDecklistID()
+def fetchLatestDecklist(decklist_id):
     if "mtggoldfish.com" in decklist_id:
         decklist_id = fetchDecklistID(decklist_id)
 
@@ -47,9 +44,7 @@ def fetchCube(cube_id=None):
     return deck, "https://cubecobra.com/cube/overview/" + cube_id
 
 
-def fetchTopDecks(format=None):
-    if format is None:
-        format = daily_format
+def fetchTopDecks(format):
     data = urllib.request.urlopen("https://www.mtggoldfish.com/metagame/" + format).read()
     data = data.decode("utf-8")
     decks = dict()

@@ -7,15 +7,7 @@ Install the required packages:
 - discord.py
 - requests
 
-Create a file named conf.py in the utils directory for some basic configurations:
-
-```
-token = "YOUR_TOKEN_HERE" # The discord bot token
-poll_wait_time = 3600 * 3 # Time before poll closes
-
-default_decklist = "DEFAULT DECKLIST HERE" # a link to the archetype when /randomhand is called without a link to a decklist
-daily_format = "pauper" # the metagame page on mtggoldfish to use
-```
+Use python main.py --help to see all the required input
 
 Your bot is ready to be deployed now. Make sure to use /setchannel to set a channel for a daily mulligan thread.
 
@@ -31,7 +23,6 @@ The bot has the following commands:
 
 ## To Do's
 
-- replace conf.py with argparse
 - add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
 - remove the default decklist from /randomhand, give an error message instead
 - create command tooltips
