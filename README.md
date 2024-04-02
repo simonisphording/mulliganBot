@@ -33,5 +33,5 @@ The bot has the following commands:
 
 - add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
 - remove the default decklist from /randomhand, give an error message instead
-- create a new command, /mulligan, that automatically selects the deck posted last by the bot
 - create command tooltips
+- save poll results to a file, so they don't get lost when bot resets
