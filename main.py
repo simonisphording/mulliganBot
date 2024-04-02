@@ -1,3 +1,4 @@
+import os
 import sys
 import discord
 import datetime
@@ -44,9 +45,10 @@ async def on_message(message):
             deck_id = None
         try:
             deck, url = fetchLatestDecklist(deck_id)
-            hand = generateHandImage(deck)
+            _, path = generateHandImage(deck)
             await message.channel.send(f'a random opening hand from <{url}>')
-            await message.channel.send(file=discord.File("images/hand.jpg"))
+            await message.channel.send(file=discord.File(path))
+            os.remove(path)
         except HTTPError:
             await message.channel.send("https://www.mtggoldfish.com/deck/" + deck_id + " is not an existing deck")
 
@@ -63,6 +65,17 @@ async def on_message(message):
         except HTTPError:
             await message.channel.send("https://cubecobra.com/cube/overview/" + cube_id + " is not an existing cube")
 
+    if message.content.startswith('/mulligan'):
+        async for msg in message.channel.history(limit=None):
+            if msg.author == client.user:
+                if msg.content.startswith("a random opening hand from"):
+                    url = msg.content.replace("<", ">").split(">")[1]
+                    deck, url = fetchLatestDecklist(url)
+                    _, path = generateHandImage(deck)
+                    await message.channel.send(file=discord.File(path))
+                    os.remove(path)
+                    break
+
 
 @tasks.loop(time=dailyTime)
 async def dailyHands():
@@ -76,15 +89,16 @@ async def dailyHands():
             deck, url = fetchLatestDecklist(next_link[guild.id])
         else:
             deck, url = fetchLatestDecklist()
-        hand = generateHandImage(deck)
+        _, path = generateHandImage(deck)
 
         thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
         thread = await channel.create_thread(name=thread_title)
 
         await channel.send(f"Today's daily hand thread: {thread.mention}")
 
-        await thread.send(f'a random opening hand from <{url}>')
-        await thread.send(file=discord.File("images/hand.jpg"))
+        await thread.send(f'a random opening hand from <{url}>. Would you like to see another hand? Type /mulligan')
+        await thread.send(file=discord.File(path))
+        os.remove(path)
 
         topDecks = fetchTopDecks()
         rselection = sample(list(topDecks.keys()), 3)
