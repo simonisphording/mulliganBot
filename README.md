@@ -31,7 +31,7 @@ The bot has the following commands:
 
 ## To Do's
 
+- replace conf.py with argparse
 - add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
 - remove the default decklist from /randomhand, give an error message instead
 - create command tooltips
-- save poll results to a file, so they don't get lost when bot resets

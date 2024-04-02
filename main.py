@@ -4,7 +4,7 @@ import datetime
 from discord.ext import tasks
 from utils.decklistFetcher import fetchLatestDecklist, fetchCube, fetchTopDecks
 from utils.randomHand import generateHandImage, generatePackImage
-from utils.channelStorer import store_channel_id, get_channel_id
+from utils.channelStorer import store_channel_id, get_channel_id, store_last_poll, get_last_poll
 from utils.conf import token, poll_wait_time, make_poll
 from urllib.error import HTTPError
 from random import sample
@@ -15,8 +15,6 @@ intents.message_content = True
 intents.reactions = True
 
 client = discord.Client(intents=intents)
-
-next_link = dict()
 
 utc = datetime.timezone.utc
 dailyTime = datetime.time(hour=12, minute=0, tzinfo=utc)
@@ -89,14 +87,14 @@ async def mulligan(message):
 
 @tasks.loop(seconds=60)#time=dailyTime)
 async def dailyHands():
-    global next_link
     for guild in client.guilds:
         channel = client.get_channel(get_channel_id(guild.id))
         if not channel:
             print(f"{guild.name} has no channel id")
             break
-        if make_poll and guild.id in next_link.keys():
-            deck, url = fetchLatestDecklist(next_link[guild.id])
+
+        if make_poll and get_last_poll(guild.id):
+            deck, url = fetchLatestDecklist(get_last_poll(guild.id))
         else:
             deck, url = fetchLatestDecklist()
         thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -137,7 +135,7 @@ async def dailyHands():
                     elif count == max_count:
                         max_option.append(emoji)
             winner = rselection[sample(max_option, 1)[0]]
-            next_link[guild.id] = topDecks[winner]
+            store_last_poll(guild.id, topDecks[winner])
 
             await thread.send(f"Poll closed! Tomorrow's deck will be {winner}")
 
