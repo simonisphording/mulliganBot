@@ -1,3 +1,4 @@
+import os
 import sys
 import discord
 import datetime
@@ -44,11 +45,39 @@ async def on_message(message):
             deck_id = None
         try:
             deck, url = fetchLatestDecklist(deck_id)
-            hand = generateHandImage(deck)
+            _, path = generateHandImage(deck)
             await message.channel.send(f'a random opening hand from <{url}>')
-            await message.channel.send(file=discord.File("images/hand.jpg"))
+            await message.channel.send(file=discord.File(path))
+            os.remove(path)
         except HTTPError:
             await message.channel.send("https://www.mtggoldfish.com/deck/" + deck_id + " is not an existing deck")
+
+    if message.content.startswith('/mulligan'):
+        posted = False
+        async for msg in message.channel.history(limit=None):
+            if msg.author == client.user:
+                if msg.content.startswith("a random opening hand from"):
+                    url = msg.content.replace("<", ">").split(">")[1]
+                    deck, url = fetchLatestDecklist(url)
+                    _, path = generateHandImage(deck)
+                    msg = await message.channel.send(file=discord.File(path))
+                    await msg.add_reaction(chr(0x1F44D))
+                    await msg.add_reaction(chr(0x1F44E))
+                    os.remove(path)
+                    posted = True
+                    break
+        if not posted:
+            if isinstance(message.channel, discord.Thread):
+                msg = message.channel.starter_message
+                if msg.content.startswith("a random opening hand from"):
+                    url = msg.content.replace("<", ">").split(">")[1]
+                    deck, url = fetchLatestDecklist(url)
+                    _, path = generateHandImage(deck)
+                    msg = await message.channel.send(file=discord.File(path))
+                    await msg.add_reaction(chr(0x1F44D))
+                    await msg.add_reaction(chr(0x1F44E))
+                    os.remove(path)
+
 
 
 @tasks.loop(time=dailyTime)
@@ -60,15 +89,18 @@ async def dailyHands():
             print(f"{guild.name} has no channel id")
             break
         deck, url = fetchLatestDecklist()
-        hand = generateHandImage(deck)
+        _, path = generateHandImage(deck)
 
         thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
-        thread = await channel.create_thread(name=thread_title)
 
-        await channel.send(f"Today's daily hand thread: {thread.mention}")
+        #await channel.send(f"Today's daily hand thread: {thread.mention}")
 
-        await thread.send(f'a random opening hand from <{url}>. If you want to see another hand, type /randomhand.')
-        await thread.send(file=discord.File("images/hand.jpg"))
+        message = await channel.send(f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
+        thread = await channel.create_thread(name=thread_title, message=message)
+        message = await thread.send(file=discord.File(path))
+        await message.add_reaction(chr(0x1F44D))
+        await message.add_reaction(chr(0x1F44E))
+        os.remove(path)
 
 
 @client.event

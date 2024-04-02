@@ -1,6 +1,7 @@
 import os
 import datetime
-from random import sample
+import string
+from random import sample, choices
 from requests import get
 from json import loads
 from shutil import copyfileobj
@@ -62,9 +63,10 @@ def generateHandImage(deck):
         new_im.paste(im, (x_offset, 0))
         x_offset += im.size[0]
 
-    new_im.save('images/hand.jpg')
+    path = f"images/{''.join(choices(string.ascii_lowercase + string.digits, k=10))}.jpg"
+    new_im.save(path)
 
-    return hand
+    return hand, path
 
 
 def generatePackImage(cube):
