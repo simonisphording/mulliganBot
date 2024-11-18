@@ -56,24 +56,6 @@ async def send_hand_image(channel, deck):
     await msg.add_reaction(chr(0x1F44E))
     os.remove(path)
 
-@bot.command(name="setChannel", help="Set channel in which daily hands are posted")
-async def set_channel(message, channel: discord.channel = None):
-    guild_id = message.guild.id
-
-    if not message.author.guild_permissions.administrator:
-        await message.channel.send("You need to be an administrator to set the channel.")
-        return
-
-    if not channel:
-        await message.channel.send("Please mention a valid channel.")
-        return
-
-    settings_file = get_settings_file(guild_id)
-    settings = load_settings(settings_file)
-    settings["daily_channel"] = channel.id
-    save_settings(settings_file, settings)
-    await message.channel.send(f"Channel {channel.mention} set as message destination.")
-
 @bot.command(name="randomHand", help="Create a random hand for the linked decklist")
 async def random_hand(message, deck_link: str = None):
     settings_file = get_settings_file(message.guild.id)
@@ -170,8 +152,50 @@ def create_daily_task(guild):
     daily_hands.start()
     guild_tasks[guild.id] = daily_hands
 
+@bot.command(name="setChannel", help="Set channel in which daily hands are posted")
+async def set_channel(message, channel: discord.channel = None):
+    guild_id = message.guild.id
+
+    if not message.author.guild_permissions.administrator:
+        await message.channel.send("You need to be an administrator to set the channel.")
+        return
+
+    if not channel:
+        await message.channel.send("Please mention a valid channel.")
+        return
+
+    settings_file = get_settings_file(guild_id)
+    settings = load_settings(settings_file)
+    settings["daily_channel"] = channel.id
+    save_settings(settings_file, settings)
+    await message.channel.send(f"Channel {channel.mention} set as message destination.")
+
+@bot.command(name="setFormat", help="Set format to pull decks from")
+async def set_format(message, daily_format: str = None):
+    guild_id = message.guild.id
+
+    if not message.author.guild_permissions.administrator:
+        await message.channel.send("You need to be an administrator to change settings.")
+        return
+
+    if not daily_format:
+        await message.channel.send("Please mention a format.")
+        return
+
+    settings_file = get_settings_file(guild_id)
+    settings = load_settings(settings_file)
+    settings["daily_format"] = daily_format
+    save_settings(settings_file, settings)
+    await message.channel.send(f"{daily_format} set as format.")
+
 @bot.command(name="setDailyTime", help="Set a new time for dailyHands task (HH:MM format)")
 async def set_daily_time(ctx, time_str: str):
+    guild_id = ctx.guild.id
+
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.channel.send("You need to be an administrator to set the daily hand time.")
+        return
+
     try:
         # Parse the new time
         new_time = datetime.datetime.strptime(time_str, "%H:%M").time()
@@ -193,6 +217,47 @@ async def set_daily_time(ctx, time_str: str):
 
     except ValueError:
         await ctx.send("Invalid time format. Please use HH:MM format.")
+
+@bot.command(name="setDefaultDeck", help="Set default decklist. Can also be an archetype page (i.e. https://www.mtggoldfish.com/archetype/pauper-familiars#paper")
+async def set_default_deck(ctx, deck : str = None):
+    guild_id = ctx.guild.id
+
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.channel.send("You need to be an administrator to change settings.")
+        return
+
+    if not deck:
+        await ctx.channel.send("Please provide a deck link.")
+        return
+
+    settings_file = get_settings_file(guild_id)
+    settings = load_settings(settings_file)
+    settings["default_list"] = deck
+    save_settings(settings_file, settings)
+    await ctx.channel.send(f"{deck} set as format.")
+
+@bot.command(name="poll", help="toggle daily poll on or off")
+async def toggle_poll(ctx, toggle : str):
+    guild_id = ctx.guild.id
+    settings_file = get_settings_file(guild_id)
+    settings = load_settings(settings_file)
+
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You need to be an administrator to change settings.")
+        return
+
+    toggle = toggle.lower()
+    if toggle == "on":
+        settings["make_poll"] = True
+        await ctx.send("Daily polls have been enabled.")
+    elif toggle == "off":
+        settings["make_poll"] = False
+        await ctx.send("Daily polls have been disabled.")
+    else:
+        await ctx.send("Invalid option. Use '/poll on' to enable or '/poll off' to disable.")
+        return
+
+    save_settings(settings_file, settings)
 
 @bot.event
 async def on_ready():

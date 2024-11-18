@@ -25,4 +25,3 @@ The bot has the following commands:
 
 - add an option to use shorthand names: for instance, /starthand familiars should give a deck from the familiars page
 - remove the default decklist from /randomhand, give an error message instead
-- create command tooltips
