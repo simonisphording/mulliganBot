@@ -33,7 +33,7 @@ def ensure_server_directories(guild_id):
     if not os.path.exists(settings_file):
         settings = {"daily_channel" : None,
                     "daily_format" : "pauper",
-                    "time" : datetime.strptime("09:00", "%H:%M").time(),
+                    "time" : datetime.time(9, 0).strftime("%H:%M"),
                     "default_list" : "https://www.mtggoldfish.com/archetype/pauper-familiars#paper",
                     "make_poll" : False,
                     "poll_wait_time" : 3600 * 5,
@@ -90,7 +90,8 @@ async def mulligan(message):
 def create_daily_task(guild):
     settings_file = get_settings_file(guild.id)
     settings = load_settings(settings_file)
-    daily_time = settings.get("time", datetime.time(hour=12, minute=0))
+    daily_time = settings["time"]
+    daily_time = datetime.datetime.strptime(daily_time, "%H:%M").time()
 
     # Define the loop for the specific guild
     @tasks.loop(time=daily_time)
@@ -153,7 +154,7 @@ def create_daily_task(guild):
     guild_tasks[guild.id] = daily_hands
 
 @bot.command(name="setChannel", help="Set channel in which daily hands are posted")
-async def set_channel(message, channel: discord.channel = None):
+async def set_channel(message, channel: discord.TextChannel = None):
     guild_id = message.guild.id
 
     if not message.author.guild_permissions.administrator:
@@ -188,10 +189,8 @@ async def set_format(message, daily_format: str = None):
     save_settings(settings_file, settings)
     await message.channel.send(f"{daily_format} set as format.")
 
-@bot.command(name="setDailyTime", help="Set a new time for dailyHands task (HH:MM format)")
+@bot.command(name="setDailyTime", help="Set a new UTC time for dailyHands task (HH:MM format)")
 async def set_daily_time(ctx, time_str: str):
-    guild_id = ctx.guild.id
-
     if not ctx.author.guild_permissions.administrator:
         await ctx.channel.send("You need to be an administrator to set the daily hand time.")
         return
@@ -204,7 +203,7 @@ async def set_daily_time(ctx, time_str: str):
         # Load settings
         settings_file = get_settings_file(guild_id)
         settings = load_settings(settings_file)
-        settings["time"] = new_time
+        settings["time"] = new_time.strftime("%H:%M")
         save_settings(settings_file, settings)
 
         # Stop and restart the task for this guild
