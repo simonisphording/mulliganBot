@@ -1,39 +1,53 @@
 import os
-import discord
 import datetime
 import argparse
-from discord.ext import tasks
+from random import sample
+import json
+
+import discord
+import asyncio
+from discord.ext import commands, tasks
 from utils.decklistFetcher import fetchLatestDecklist, fetchTopDecks
 from utils.randomHand import generateHandImage
-from utils.channelStorer import store_channel_id, get_channel_id, store_last_poll, get_last_poll
+
 from urllib.error import HTTPError
-from random import sample
-import asyncio
-
-parser = argparse.ArgumentParser()
-parser.add_argument('-t', '--token', type=str,
-                    help='the bot token')
-parser.add_argument('--poll-wait-time', type=int, default=3600 * 5,
-                    help='time in seconds before the poll closes')
-parser.add_argument('--make-poll', action='store_true',
-                    help='enable voting for decklists using a poll')
-parser.add_argument('--daily-format', type=str, default='pauper',
-                    help='the mtg format to sample decks from for the poll')
-parser.add_argument('--default-decklist', type=str,
-                    default="https://www.mtggoldfish.com/archetype/pauper-familiars#paper",
-                    help='the default decklist for /randomhand if no input is given')
-
-args = parser.parse_args()
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.reactions = True
 
-client = discord.Client(intents=intents)
+guild_tasks = {}
 
-utc = datetime.timezone.utc
-dailyTime = datetime.time(hour=12, minute=0, tzinfo=utc)
+bot = commands.Bot(command_prefix='/', intents=intents, case_insensitive=True)
 
+def get_server_directory(guild_id):
+    return f"servers/{guild_id}"
+
+def get_settings_file(guild_id):
+    return os.path.join(get_server_directory(guild_id), "settings.json")
+
+def ensure_server_directories(guild_id):
+    server_dir = get_server_directory(guild_id)
+    settings_file = get_settings_file(guild_id)
+
+    os.makedirs(server_dir, exist_ok=True)
+    if not os.path.exists(settings_file):
+        settings = {"daily_channel" : None,
+                    "daily_format" : "pauper",
+                    "time" : datetime.strptime("09:00", "%H:%M").time(),
+                    "default_list" : "https://www.mtggoldfish.com/archetype/pauper-familiars#paper",
+                    "make_poll" : False,
+                    "poll_wait_time" : 3600 * 5,
+                    "last_poll_result" : None}
+        save_settings(settings_file, settings)
+
+def load_settings(settings_file):
+    with open(settings_file, "r") as f:
+        return json.load(f)
+
+def save_settings(settings_file, settings):
+    os.makedirs(os.path.dirname(settings_file), exist_ok=True)
+    with open(settings_file, "w") as f:
+        json.dump(settings, f)
 
 async def send_hand_image(channel, deck):
     _, path = generateHandImage(deck)
@@ -42,37 +56,29 @@ async def send_hand_image(channel, deck):
     await msg.add_reaction(chr(0x1F44E))
     os.remove(path)
 
+@bot.command(name="setChannel", help="Set channel in which daily hands are posted")
+async def set_channel(message, channel: discord.channel = None):
+    guild_id = message.guild.id
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-
-    if message.content.startswith('/setchannel'):
-        await set_channel(message)
-
-    if message.content.startswith('/randomhand'):
-        await random_hand(message)
-
-    if message.content.startswith('/mulligan'):
-        await mulligan(message)
-
-
-async def set_channel(message):
     if not message.author.guild_permissions.administrator:
         await message.channel.send("You need to be an administrator to set the channel.")
         return
 
-    channel_mention = message.channel_mentions[0] if message.channel_mentions else None
-    if channel_mention:
-        store_channel_id(message.guild.id, channel_mention.id)
-        await message.channel.send(f"Channel {channel_mention.mention} set as message destination.")
-    else:
+    if not channel:
         await message.channel.send("Please mention a valid channel.")
+        return
 
+    settings_file = get_settings_file(guild_id)
+    settings = load_settings(settings_file)
+    settings["daily_channel"] = channel.id
+    save_settings(settings_file, settings)
+    await message.channel.send(f"Channel {channel.mention} set as message destination.")
 
-async def random_hand(message):
-    deck_id = message.content.split(" ")[1] if len(message.content.split(" ")) == 2 else args.default_decklist
+@bot.command(name="randomHand", help="Create a random hand for the linked decklist")
+async def random_hand(message, deck_link: str = None):
+    settings_file = get_settings_file(message.guild.id)
+    settings = load_settings(settings_file)
+    deck_id = deck_link if deck_link else settings["default_list"]
     try:
         deck, url = fetchLatestDecklist(deck_id)
         await message.channel.send(f'a random opening hand from <{url}>')
@@ -81,11 +87,11 @@ async def random_hand(message):
     except HTTPError:
         await message.channel.send(f"https://www.mtggoldfish.com/deck/{deck_id} is not an existing deck")
 
-
+@bot.command(name="mulligan", help="Mulligan the last posted deck")
 async def mulligan(message):
     posted = False
     async for msg in message.channel.history(limit=None):
-        if msg.author == client.user and msg.content.startswith("a random opening hand from"):
+        if msg.author == bot.user and msg.content.startswith("a random opening hand from"):
             url = msg.content.replace("<", ">").split(">")[1]
             deck, url = fetchLatestDecklist(url)
             await send_hand_image(message.channel, deck)
@@ -99,66 +105,122 @@ async def mulligan(message):
             deck, url = fetchLatestDecklist(url)
             await send_hand_image(message.channel, deck)
 
+def create_daily_task(guild):
+    settings_file = get_settings_file(guild.id)
+    settings = load_settings(settings_file)
+    daily_time = settings.get("time", datetime.time(hour=12, minute=0))
 
-@tasks.loop(time=dailyTime)
-async def dailyHands():
-    for guild in client.guilds:
-        channel = client.get_channel(get_channel_id(guild.id))
+    # Define the loop for the specific guild
+    @tasks.loop(time=daily_time)
+    async def daily_hands():
+        channel = bot.get_channel(settings['daily_channel'])
         if not channel:
-            print(f"{guild.name} has no channel id")
-            break
+            print(f"{guild.name} has no valid daily channel.")
+            return
 
-        if args.make_poll and get_last_poll(guild.id):
-            deck, url = fetchLatestDecklist(get_last_poll(guild.id))
+        # Fetch the decklist
+        if settings["make_poll"] and settings["last_poll_result"]:
+            deck, url = fetchLatestDecklist(settings["last_poll_result"])
         else:
-            deck, url = fetchLatestDecklist(args.default_decklist)
-        thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
+            deck, url = fetchLatestDecklist(settings["default_list"])
 
-        message = await channel.send(f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
+        # Create a thread for discussion
+        thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
+        message = await channel.send(
+            f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
         thread = await channel.create_thread(name=thread_title, message=message)
         await send_hand_image(thread, deck)
 
-        if args.make_poll:
-            topDecks = fetchTopDecks(args.daily_format)
+        # Create a poll if needed
+        if settings["make_poll"]:
+            topDecks = fetchTopDecks(settings["daily_format"])
             rselection = sample(list(topDecks.keys()), 3)
-
             rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
 
             embed = discord.Embed(title="Which archetype would you like to see tomorrow? Poll closes in 3 hours",
                                   color=discord.Color.blue())
-            for emoji, option in zip(rselection.keys(), rselection.values()):
+            for emoji, option in rselection.items():
                 embed.add_field(name=f"{emoji}: {option}", value="\u200B", inline=False)
 
             msg = await thread.send(embed=embed)
-
             for emoji in rselection.keys():
                 await msg.add_reaction(emoji)
 
-            await asyncio.sleep(args.poll_wait_time)
+            await asyncio.sleep(settings["poll_wait_time"])
 
-            # retrieve results
             msg = await thread.fetch_message(msg.id)
             max_count = 0
             max_option = []
             for reaction in msg.reactions:
                 emoji = reaction.emoji
-                if emoji in rselection.keys():
+                if emoji in rselection:
                     count = reaction.count - 1
                     if count > max_count:
                         max_count = count
                         max_option = [emoji]
                     elif count == max_count:
                         max_option.append(emoji)
-            winner = rselection[sample(max_option, 1)[0]]
-            store_last_poll(guild.id, topDecks[winner])
 
+            winner = rselection[sample(max_option, 1)[0]]
+            settings["last_poll_result"] = winner
+            save_settings(settings_file, settings)
             await thread.send(f"Poll closed! Tomorrow's deck will be {winner}")
 
+    # Start the task and store it
+    daily_hands.start()
+    guild_tasks[guild.id] = daily_hands
 
-@client.event
+@bot.command(name="setDailyTime", help="Set a new time for dailyHands task (HH:MM format)")
+async def set_daily_time(ctx, time_str: str):
+    try:
+        # Parse the new time
+        new_time = datetime.datetime.strptime(time_str, "%H:%M").time()
+        guild_id = ctx.guild.id
+
+        # Load settings
+        settings_file = get_settings_file(guild_id)
+        settings = load_settings(settings_file)
+        settings["time"] = new_time
+        save_settings(settings_file, settings)
+
+        # Stop and restart the task for this guild
+        if guild_id in guild_tasks and guild_tasks[guild_id].is_running():
+            guild_tasks[guild_id].stop()
+            print(f"Stopped daily task for guild {ctx.guild.name}")
+
+        create_daily_task(ctx.guild)
+        await ctx.send(f"Daily task time updated to {time_str}!")
+
+    except ValueError:
+        await ctx.send("Invalid time format. Please use HH:MM format.")
+
+@bot.event
 async def on_ready():
-    if not dailyHands.is_running():
-        dailyHands.start()
-        print("dailyHands task started")
+    for guild in bot.guilds:
+        ensure_server_directories(guild.id)
+        if guild.id not in guild_tasks:
+            create_daily_task(guild)
+            print(f"Started daily task for {guild.name}")
+    print("Bot is ready.")
 
-client.run(args.token)
+@bot.event
+async def on_guild_join(guild):
+    ensure_server_directories(guild.id)
+    if guild.id not in guild_tasks:
+        create_daily_task(guild)
+        print(f"Started daily task for {guild.name}")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--token', type=str, help='the bot token', default=None)
+    args = parser.parse_args()
+
+    if not args.token:
+        token = os.getenv('DISCORD_BOT_TOKEN')
+    else:
+        token = args.token
+
+    bot.run(token)
+
+if __name__ == "__main__":
+    main()
