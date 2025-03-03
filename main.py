@@ -1,16 +1,15 @@
 import os
 import datetime
 import argparse
-from random import sample
 import json
-
-import discord
 import asyncio
+import discord
 from discord.ext import commands, tasks
+from random import sample
+from urllib.error import HTTPError
+
 from utils.decklistFetcher import fetchLatestDecklist, fetchTopDecks
 from utils.randomHand import generateHandImage
-
-from urllib.error import HTTPError
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -26,6 +25,7 @@ def get_settings_file(guild_id):
     return os.path.join(get_server_directory(guild_id), "settings.json")
 
 def ensure_server_directories(guild_id):
+    """Ensure directories and settings file exist."""
     server_dir = get_server_directory(guild_id)
     settings_file = get_settings_file(guild_id)
 
@@ -41,51 +41,74 @@ def ensure_server_directories(guild_id):
         save_settings(settings_file, settings)
 
 def load_settings(settings_file):
+    """Load settings from JSON file."""
     with open(settings_file, "r") as f:
         return json.load(f)
 
 def save_settings(settings_file, settings):
+    """Save settings to JSON file."""
     os.makedirs(os.path.dirname(settings_file), exist_ok=True)
     with open(settings_file, "w") as f:
         json.dump(settings, f)
 
 async def send_hand_image(channel, deck):
-    _, path = generateHandImage(deck)
-    msg = await channel.send(file=discord.File(path))
-    await msg.add_reaction(chr(0x1F44D))
-    await msg.add_reaction(chr(0x1F44E))
-    os.remove(path)
+    """Generate and send a random hand image."""
+    try:
+        _, path = generateHandImage(deck)
+        msg = await channel.send(file=discord.File(path))
+        await msg.add_reaction("👍")
+        await msg.add_reaction("👎")
+        os.remove(path)
+    except Exception as e:
+        print(f"Error sending hand image: {e}")
+        await channel.send("An error occurred while generating the hand image.")
 
-@bot.command(name="randomHand", help="Create a random hand for the linked decklist")
-async def random_hand(message, deck_link: str = None):
-    settings_file = get_settings_file(message.guild.id)
+@bot.command(name="randomHand", help="Generate a random opening hand from a decklist")
+async def random_hand(ctx, deck_link: str = None):
+    settings_file = get_settings_file(ctx.guild.id)
     settings = load_settings(settings_file)
     deck_id = deck_link if deck_link else settings["default_list"]
+
     try:
         deck, url = fetchLatestDecklist(deck_id)
-        await message.channel.send(f'a random opening hand from <{url}>')
-        await send_hand_image(message.channel, deck)
-
+        if deck:
+            await ctx.send(f"A random opening hand from <{url}>")
+            await send_hand_image(ctx.channel, deck)
+        else:
+            await ctx.send("Failed to fetch decklist. Please check the link.")
     except HTTPError:
-        await message.channel.send(f"https://www.mtggoldfish.com/deck/{deck_id} is not an existing deck")
+        await ctx.send(f"Invalid decklist: {deck_id}")
 
 @bot.command(name="mulligan", help="Mulligan the last posted deck")
-async def mulligan(message):
-    posted = False
-    async for msg in message.channel.history(limit=None):
-        if msg.author == bot.user and msg.content.startswith("a random opening hand from"):
-            url = msg.content.replace("<", ">").split(">")[1]
-            deck, url = fetchLatestDecklist(url)
-            await send_hand_image(message.channel, deck)
-            posted = True
-            break
+async def mulligan(ctx):
+    async for msg in ctx.channel.history(limit=50):  # Limit to avoid API overload
+        if msg.author == bot.user and "a random opening hand from" in msg.content:
+            url = msg.content.split("<")[1].split(">")[0]
+            try:
+                deck, _ = fetchLatestDecklist(url)
+                if deck:
+                    await send_hand_image(ctx.channel, deck)
+                else:
+                    await ctx.send("Could not fetch decklist for mulligan.")
+            except Exception as e:
+                print(f"Error in mulligan: {e}")
+                await ctx.send("An error occurred while trying to mulligan.")
+            return  # Exit loop after finding the first valid message
 
-    if not posted and isinstance(message.channel, discord.Thread):
-        msg = message.channel.starter_message
-        if msg.content.startswith("a random opening hand from"):
-            url = msg.content.replace("<", ">").split(">")[1]
-            deck, url = fetchLatestDecklist(url)
-            await send_hand_image(message.channel, deck)
+    # Handle thread case separately
+    if isinstance(ctx.channel, discord.Thread):
+        msg = await ctx.channel.parent.fetch_message(ctx.channel.id)
+        if msg and "a random opening hand from" in msg.content:
+            url = msg.content.split("<")[1].split(">")[0]
+            try:
+                deck, _ = fetchLatestDecklist(url)
+                if deck:
+                    await send_hand_image(ctx.channel, deck)
+            except Exception as e:
+                print(f"Error fetching deck for thread: {e}")
+                await ctx.send("Could not fetch decklist for mulligan.")
+
+    await ctx.send("No recent deck found to mulligan.")
 
 def create_daily_task(guild):
     settings_file = get_settings_file(guild.id)
@@ -96,58 +119,61 @@ def create_daily_task(guild):
     # Define the loop for the specific guild
     @tasks.loop(time=daily_time)
     async def daily_hands():
-        channel = bot.get_channel(settings['daily_channel'])
-        if not channel:
-            print(f"{guild.name} has no valid daily channel.")
-            return
+        try:
+            channel = bot.get_channel(settings['daily_channel'])
+            if not channel:
+                print(f"{guild.name} has no valid daily channel.")
+                return
 
-        # Fetch the decklist
-        if settings["make_poll"] and settings["last_poll_result"]:
-            deck, url = fetchLatestDecklist(settings["last_poll_result"])
-        else:
-            deck, url = fetchLatestDecklist(settings["default_list"])
+            # Fetch the decklist
+            if settings["make_poll"] and settings["last_poll_result"]:
+                deck, url = fetchLatestDecklist(settings["last_poll_result"])
+            else:
+                deck, url = fetchLatestDecklist(settings["default_list"])
 
-        # Create a thread for discussion
-        thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
-        message = await channel.send(
-            f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
-        thread = await channel.create_thread(name=thread_title, message=message)
-        await send_hand_image(thread, deck)
+            # Create a thread for discussion
+            thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
+            message = await channel.send(
+                f'a random opening hand from <{url}>. If you want to see another hand, type /mulligan.')
+            thread = await channel.create_thread(name=thread_title, message=message)
+            await send_hand_image(thread, deck)
 
-        # Create a poll if needed
-        if settings["make_poll"]:
-            topDecks = fetchTopDecks(settings["daily_format"])
-            rselection = sample(list(topDecks.keys()), 3)
-            rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
+            # Create a poll if needed
+            if settings["make_poll"]:
+                topDecks = fetchTopDecks(settings["daily_format"])
+                rselection = sample(list(topDecks.keys()), 3)
+                rselection = dict(zip([chr(0x1F1E6), chr(0x1F1E7), chr(0x1F1E8)], rselection))
 
-            embed = discord.Embed(title="Which archetype would you like to see tomorrow? Poll closes in 3 hours",
-                                  color=discord.Color.blue())
-            for emoji, option in rselection.items():
-                embed.add_field(name=f"{emoji}: {option}", value="\u200B", inline=False)
+                embed = discord.Embed(title="Which archetype would you like to see tomorrow? Poll closes in 3 hours",
+                                      color=discord.Color.blue())
+                for emoji, option in rselection.items():
+                    embed.add_field(name=f"{emoji}: {option}", value="\u200B", inline=False)
 
-            msg = await thread.send(embed=embed)
-            for emoji in rselection.keys():
-                await msg.add_reaction(emoji)
+                msg = await thread.send(embed=embed)
+                for emoji in rselection.keys():
+                    await msg.add_reaction(emoji)
 
-            await asyncio.sleep(settings["poll_wait_time"])
+                await asyncio.sleep(settings["poll_wait_time"])
 
-            msg = await thread.fetch_message(msg.id)
-            max_count = 0
-            max_option = []
-            for reaction in msg.reactions:
-                emoji = reaction.emoji
-                if emoji in rselection:
-                    count = reaction.count - 1
-                    if count > max_count:
-                        max_count = count
-                        max_option = [emoji]
-                    elif count == max_count:
-                        max_option.append(emoji)
+                msg = await thread.fetch_message(msg.id)
+                max_count = 0
+                max_option = []
+                for reaction in msg.reactions:
+                    emoji = reaction.emoji
+                    if emoji in rselection:
+                        count = reaction.count - 1
+                        if count > max_count:
+                            max_count = count
+                            max_option = [emoji]
+                        elif count == max_count:
+                            max_option.append(emoji)
 
-            winner = rselection[sample(max_option, 1)[0]]
-            settings["last_poll_result"] = winner
-            save_settings(settings_file, settings)
-            await thread.send(f"Poll closed! Tomorrow's deck will be {winner}")
+                winner = rselection[sample(max_option, 1)[0]]
+                settings["last_poll_result"] = winner
+                save_settings(settings_file, settings)
+                await thread.send(f"Poll closed! Tomorrow's deck will be {winner}")
+        except Exception as e:
+            print(f"Error in daily task for {guild.name}: {e}")
 
     # Start the task and store it
     daily_hands.start()
