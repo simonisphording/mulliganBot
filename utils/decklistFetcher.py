@@ -1,61 +1,105 @@
-import urllib
+import requests
 import string
 
 
 def fetchDecklistID(url):
-    # read mtggoldfish web page
-    data = urllib.request.urlopen(url).read()
-    data = data.decode("utf-8")
+    """Fetches the decklist ID from an MTGGoldfish URL."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.text
 
-    # find the download link for the decklist
-    start = data.find('class="dropdown-item" href="/deck/download/') + len(
-        'class="dropdown-item" href="/deck/download/')
-    end = data.find('">Text File')
-    page = data[start:end]
-    return page
+        start = data.find('class="dropdown-item" href="/deck/download/') + len(
+            'class="dropdown-item" href="/deck/download/'
+        )
+        end = data.find('">Text File', start)
+
+        if start == -1 or end == -1:
+            raise ValueError("Could not find decklist ID in the webpage.")
+
+        return data[start:end].split('"')[0]  # Extract decklist ID properly
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching decklist ID: {e}")
+        return None
 
 
 def fetchLatestDecklist(decklist_id):
+    """Fetches the latest decklist from MTGGoldfish."""
     if "mtggoldfish.com" in decklist_id:
         decklist_id = fetchDecklistID(decklist_id)
+        if not decklist_id:
+            return None, None  # Return empty values on failure
 
-    data = urllib.request.urlopen("https://www.mtggoldfish.com/deck/download/" + decklist_id).read().decode("utf-8")
+    url = f"https://www.mtggoldfish.com/deck/download/{decklist_id}"
 
-    deck = []
-    for card in data.split('\r\n'):
-        if card == '':
-            break
-        n = card.split(' ')[0]
-        name = ' '.join(card.split(' ')[1:])
-        deck += [name] * int(n)
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.text
 
-    return deck, "https://www.mtggoldfish.com/deck/" + decklist_id
+        deck = []
+        for line in data.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split(' ', 1)
+            if len(parts) != 2:
+                continue  # Skip invalid lines
+            count, name = parts
+            deck.extend([name] * int(count))  # Add multiple copies
+
+        return deck, f"https://www.mtggoldfish.com/deck/{decklist_id}"
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching decklist: {e}")
+        return None, None
 
 
 def fetchCube(cube_id=None):
-    data = urllib.request.urlopen("https://cubecobra.com/cube/download/plaintext/" + cube_id).read().decode("utf-8")
-    deck = []
-    for card in data.split('\r\n'):
-        if card == '':
-            break
-        if card.startswith('#'):
-            continue
-        deck.append(card)
-    return deck, "https://cubecobra.com/cube/overview/" + cube_id
+    """Fetches a cube list from CubeCobra."""
+    url = f"https://cubecobra.com/cube/download/plaintext/{cube_id}"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.text
+
+        deck = [card for card in data.splitlines() if card and not card.startswith("#")]
+
+        return deck, f"https://cubecobra.com/cube/overview/{cube_id}"
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching cube: {e}")
+        return None, None
 
 
 def fetchTopDecks(format):
-    data = urllib.request.urlopen("https://www.mtggoldfish.com/metagame/" + format).read()
-    data = data.decode("utf-8")
-    decks = dict()
-    for line in data.split("\n"):
-        if "href=\'/archetype" in line:
-            link = line.split("\'")[3]
-            name = link.split("/")[2]
-            name = " ".join([x for x in name.split("-") if not (is_hexadecimal(x) or x == "pauper")])
-            decks[name] = "https://www.mtggoldfish.com" + link
-    return decks
+    """Fetches the top decks for a given format from MTGGoldfish."""
+    url = f"https://www.mtggoldfish.com/metagame/{format}"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.text
+
+        decks = {}
+        for line in data.splitlines():
+            if "href='/archetype" in line:
+                parts = line.split("'")
+                if len(parts) < 4:
+                    continue
+                link = parts[3]
+                name_parts = link.split("/")[2].split("-")
+                name = " ".join([x for x in name_parts if not (is_hexadecimal(x) or x == "pauper")])
+                decks[name] = f"https://www.mtggoldfish.com{link}"
+
+        return decks
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching top decks: {e}")
+        return {}
 
 
 def is_hexadecimal(s):
+    """Checks if a string is hexadecimal."""
     return all(c in string.hexdigits for c in s)
