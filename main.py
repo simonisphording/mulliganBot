@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands, tasks
 from random import sample
 from urllib.error import HTTPError
+from collections import deque
 
 from utils.decklistFetcher import fetchLatestDecklist, fetchTopDecks
 from utils.randomHand import generateHandImage
@@ -15,6 +16,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 guild_tasks = {}
+decklist_cache = {}
+CACHE_SIZE = 10
 
 bot = commands.Bot(command_prefix='/', intents=intents, case_insensitive=True)
 
@@ -51,6 +54,18 @@ def save_settings(settings_file, settings):
     with open(settings_file, "w") as f:
         json.dump(settings, f)
 
+def get_cached_decklist(guild_id, deck_id):
+    if guild_id in decklist_cache:
+        for cached_id, cached_deck in decklist_cache[guild_id]:
+            if cached_id == deck_id:
+                return cached_deck
+    return None
+
+def cache_decklist(guild_id, deck_id, deck):
+    if guild_id not in decklist_cache:
+        decklist_cache[guild_id] = deque(maxlen=CACHE_SIZE)
+    decklist_cache[guild_id].append((deck_id, deck))
+
 async def send_hand_image(channel, deck):
     """Generate and send a random hand image."""
     try:
@@ -69,46 +84,38 @@ async def random_hand(ctx, deck_link: str = None):
     settings = load_settings(settings_file)
     deck_id = deck_link if deck_link else settings["default_list"]
 
-    try:
-        deck, url = fetchLatestDecklist(deck_id)
-        if deck:
-            await ctx.send(f"A random opening hand from <{url}>")
-            await send_hand_image(ctx.channel, deck)
-        else:
-            await ctx.send("Failed to fetch decklist. Please check the link.")
-    except HTTPError:
-        await ctx.send(f"Invalid decklist: {deck_id}")
+    cached_deck = get_cached_decklist(ctx.guild.id, deck_id)
+    if cached_deck:
+        deck, url = cached_deck
+    else:
+        try:
+            deck, url = fetchLatestDecklist(deck_id)
+            cache_decklist(ctx.guild.id, deck_id, (deck, url))
+        except HTTPError:
+            await ctx.send(f"https://www.mtggoldfish.com/deck/{deck_id} is not an existing deck")
+            return
+
+    await ctx.send(f'a random opening hand from <{url}>')
+    await send_hand_image(ctx.channel, deck)
 
 @bot.command(name="mulligan", help="Mulligan the last posted deck")
 async def mulligan(ctx):
-    async for msg in ctx.channel.history(limit=50):  # Limit to avoid API overload
-        if msg.author == bot.user and "a random opening hand from" in msg.content:
-            url = msg.content.split("<")[1].split(">")[0]
-            try:
+    posted = False
+    async for msg in ctx.channel.history(limit=50):  # Limit to last 50 messages to optimize
+        if msg.author == bot.user and msg.content.startswith("a random opening hand from"):
+            url = msg.content.replace("<", ">").split(">")[1]
+            cached_deck = get_cached_decklist(ctx.guild.id, url)
+            if cached_deck:
+                deck, _ = cached_deck
+            else:
                 deck, _ = fetchLatestDecklist(url)
-                if deck:
-                    await send_hand_image(ctx.channel, deck)
-                else:
-                    await ctx.send("Could not fetch decklist for mulligan.")
-            except Exception as e:
-                print(f"Error in mulligan: {e}")
-                await ctx.send("An error occurred while trying to mulligan.")
-            return  # Exit loop after finding the first valid message
+                cache_decklist(ctx.guild.id, url, (deck, url))
+            await send_hand_image(ctx.channel, deck)
+            posted = True
+            break
 
-    # Handle thread case separately
-    if isinstance(ctx.channel, discord.Thread):
-        msg = await ctx.channel.parent.fetch_message(ctx.channel.id)
-        if msg and "a random opening hand from" in msg.content:
-            url = msg.content.split("<")[1].split(">")[0]
-            try:
-                deck, _ = fetchLatestDecklist(url)
-                if deck:
-                    await send_hand_image(ctx.channel, deck)
-            except Exception as e:
-                print(f"Error fetching deck for thread: {e}")
-                await ctx.send("Could not fetch decklist for mulligan.")
-
-    await ctx.send("No recent deck found to mulligan.")
+    if not posted:
+        await ctx.send("No previous deck found for a mulligan.")
 
 def create_daily_task(guild):
     settings_file = get_settings_file(guild.id)
@@ -126,10 +133,15 @@ def create_daily_task(guild):
                 return
 
             # Fetch the decklist
-            if settings["make_poll"] and settings["last_poll_result"]:
-                deck, url = fetchLatestDecklist(settings["last_poll_result"])
+            deck_id = settings["last_poll_result"] if settings["make_poll"] and settings["last_poll_result"] else \
+            settings["default_list"]
+
+            cached_deck = get_cached_decklist(guild.id, deck_id)
+            if cached_deck:
+                deck, url = cached_deck
             else:
-                deck, url = fetchLatestDecklist(settings["default_list"])
+                deck, url = fetchLatestDecklist(deck_id)
+                cache_decklist(guild.id, deck_id, (deck, url))
 
             # Create a thread for discussion
             thread_title = datetime.datetime.now().strftime("%Y-%m-%d")
