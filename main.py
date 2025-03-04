@@ -124,6 +124,7 @@ async def mulligan(ctx):
             else:
                 deck, _ = fetchLatestDecklist(url)
                 cache_decklist(ctx.guild.id, url, (deck, url))
+            print(type(deck), deck)
             await send_hand_image(ctx.channel, deck)
 
 
