@@ -121,6 +121,7 @@ async def mulligan(ctx):
             cached_deck = get_cached_decklist(ctx.guild.id, url)
             print("Cached deck:", cached_deck)
             if cached_deck:
+                print("here!")
                 deck, _ = cached_deck
             else:
                 deck, _ = fetchLatestDecklist(url)
