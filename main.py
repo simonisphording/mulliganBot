@@ -104,6 +104,7 @@ async def mulligan(ctx):
     async for msg in ctx.channel.history(limit=50):  # Limit to last 50 messages to optimize
         if msg.author == bot.user and msg.content.startswith("a random opening hand from"):
             url = msg.content.replace("<", ">").split(">")[1]
+            print(url)
             cached_deck = get_cached_decklist(ctx.guild.id, url)
             if cached_deck:
                 deck, _ = cached_deck
