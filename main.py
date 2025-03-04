@@ -108,7 +108,7 @@ async def mulligan(ctx):
             if cached_deck:
                 deck, _ = cached_deck
             else:
-                deck, _ = fetchLatestDecklist(url)
+                deck, url = fetchLatestDecklist(url)
                 cache_decklist(ctx.guild.id, url, (deck, url))
             await send_hand_image(ctx.channel, deck)
             posted = True
@@ -119,14 +119,11 @@ async def mulligan(ctx):
         if msg.content.startswith("a random opening hand from"):
             url = msg.content.replace("<", ">").split(">")[1]
             cached_deck = get_cached_decklist(ctx.guild.id, url)
-            print("Cached deck:", cached_deck)
             if cached_deck:
-                print("here!")
                 deck, _ = cached_deck
             else:
-                deck, _ = fetchLatestDecklist(url)
+                deck, url = fetchLatestDecklist(url)
                 cache_decklist(ctx.guild.id, url, (deck, url))
-            print(type(deck), deck)
             await send_hand_image(ctx.channel, deck)
 
 
