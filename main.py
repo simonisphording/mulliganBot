@@ -114,8 +114,18 @@ async def mulligan(ctx):
             posted = True
             break
 
-    if not posted:
-        await ctx.send("No previous deck found for a mulligan.")
+    if not posted and isinstance(ctx.channel, discord.Thread):
+        msg = await ctx.channel.parent.fetch_message(ctx.channel.id)
+        if msg.content.startswith("a random opening hand from"):
+            url = msg.content.replace("<", ">").split(">")[1]
+            cached_deck = get_cached_decklist(ctx.guild.id, url)
+            if cached_deck:
+                deck, _ = cached_deck
+            else:
+                deck, _ = fetchLatestDecklist(url)
+                cache_decklist(ctx.guild.id, url, (deck, url))
+            await send_hand_image(ctx.channel, deck)
+
 
 def create_daily_task(guild):
     settings_file = get_settings_file(guild.id)
