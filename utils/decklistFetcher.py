@@ -1,27 +1,22 @@
 import requests
 import string
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=1, max=10))
 def fetchDecklistID(url):
-    """Fetches the decklist ID from an MTGGoldfish URL."""
-    try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        data = response.text
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    data = response.text
 
-        start = data.find('class="dropdown-item" href="/deck/download/') + len(
-            'class="dropdown-item" href="/deck/download/'
-        )
-        end = data.find('">Text File', start)
+    start = data.find('class="dropdown-item" href="/deck/download/') + len(
+        'class="dropdown-item" href="/deck/download/'
+    )
+    end = data.find('">Text File', start)
 
-        if start == -1 or end == -1:
-            raise ValueError("Could not find decklist ID in the webpage.")
+    if start == -1 or end == -1:
+        raise ValueError("Could not find decklist ID in the webpage.")
 
-        return data[start:end].split('"')[0]  # Extract decklist ID properly
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching decklist ID: {e}")
-        return None
+    return data[start:end].split('"')[0]  # Extract decklist ID properly
 
 
 def fetchLatestDecklist(decklist_id):
