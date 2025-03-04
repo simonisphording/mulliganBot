@@ -5,7 +5,7 @@ import string
 def fetchDecklistID(url):
     """Fetches the decklist ID from an MTGGoldfish URL."""
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
         data = response.text
 
