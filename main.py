@@ -83,7 +83,7 @@ async def random_hand(ctx, deck_link: str = None):
     settings_file = get_settings_file(ctx.guild.id)
     settings = load_settings(settings_file)
     deck_id = deck_link if deck_link else settings["default_list"]
-
+    print(deck_id)
     cached_deck = get_cached_decklist(ctx.guild.id, deck_id)
     if cached_deck:
         deck, url = cached_deck
